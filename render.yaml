@@ -1,0 +1,84 @@
+services:
+  - type: web
+    name: aperture-ai-interview
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    # -w 1 is required, not optional: session state (cancel_event, the
+    # background orchestrator thread, the audio WebSocket bridge) is
+    # process-local. Running >1 gunicorn worker means /api/start and a
+    # later /api/end or webhook can land on different workers that don't
+    # share that state. Scale by upgrading the instance size, not workers.
+    # -k gevent is required for Flask-Sock's long-lived audio WebSockets
+    # to work concurrently with everything else (see app.py's comment).
+    startCommand: gunicorn -k gevent -w 1 --threads 8 --timeout 120 app:app
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: SECRET_KEY
+        generateValue: true
+      - key: HOST
+        value: 0.0.0.0
+      # Render sets PORT itself; do not hardcode it.
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: STARTUP_VALIDATION_STRICT
+        value: "true"
+      - key: CORS_ORIGINS
+        value: "*"
+
+      # --- Meeting BaaS ---
+      - key: MEETINGBAAS_API_KEY
+        sync: false
+      # Set this AFTER the first deploy, once you have the real
+      # onrender.com URL (or custom domain): e.g. https://your-app.onrender.com
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: MEETINGBAAS_WAITING_ROOM_TIMEOUT
+        value: "600"
+
+      # --- LLM (Cerebras primary, Groq fallback) ---
+      - key: LLM_PROVIDER
+        value: cerebras
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: CEREBRAS_MODEL
+        value: gpt-oss-120b
+      - key: LLM_FALLBACK_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+
+      # --- STT: groq (no ffmpeg/PyTorch needed, fastest on Render) ---
+      - key: STT_PROVIDER
+        value: groq
+
+      # --- TTS: edge (no espeak/system dependency needed on Render) ---
+      - key: TTS_PROVIDER
+        value: edge
+
+      # --- Email (report delivery) — pick ONE provider and fill it in ---
+      - key: EMAIL_PROVIDER
+        value: smtp
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+
+      # --- Redis (optional, recommended) ---
+      # Without this, session status/reports live in-memory only and are
+      # lost on every deploy/restart. Free tier: https://upstash.com
+      - key: REDIS_URL
+        sync: false
+
+      - key: RATE_LIMIT
+        value: "30/minute"

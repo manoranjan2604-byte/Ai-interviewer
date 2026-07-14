@@ -1,0 +1,11 @@
+.env
+auth/
+reports/*.pdf
+audio/*.wav
+audio/*.mp3
+logs/*.log
+logs/screenshots/
+__pycache__/
+*.pyc
+venv/
+.venv/

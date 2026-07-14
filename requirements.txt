@@ -1,0 +1,63 @@
+# ============================================================
+# Aperture AI Interview System — dependency list
+# Trimmed 2026-07: this project only ever used Cerebras+Groq (LLM),
+# Whisper (STT, local or via Groq), and pyttsx3/Edge-TTS (TTS).
+# Removed unused/never-configured provider SDKs: google-generativeai,
+# google-cloud-speech, deepgram-sdk, assemblyai, elevenlabs,
+# google-cloud-texttospeech, azure-cognitiveservices-speech.
+# That cut a lot of install time/disk space for code that never ran —
+# if you want one of those providers back, re-add the single line for
+# it plus the matching provider class in the relevant agent.
+# ============================================================
+
+# ---- Core (always required) ----
+Flask==3.0.3
+Flask-Cors==4.0.1
+Flask-Limiter==3.8.0
+Flask-Sock==0.7.0
+gunicorn==22.0.0
+gevent==24.2.1
+python-dotenv==1.0.1
+requests==2.32.3
+reportlab==4.2.2
+pydub==0.25.1
+httpx==0.27.2
+httpcore==1.0.5
+
+# ---- LLM providers (config.LLM_PROVIDER: cerebras | groq) ----
+# Both Cerebras and Groq expose OpenAI-compatible endpoints, so the
+# openai SDK (pointed at a different base_url) covers both.
+openai==1.42.0
+
+# ---- Speech-to-text (config.STT_PROVIDER: whisper | groq) ----
+# groq (default): uses the same openai SDK above, no extra package needed,
+# and needs no ffmpeg/Docker -- this is what makes Render's plain Python
+# runtime (no system-package installs) able to run STT at all.
+#
+# whisper: local, no API key, needs ffmpeg on PATH -- but pulls in PyTorch
+# (a very heavy install) and needs real CPU/RAM headroom neither of which
+# fit Render's free/cheap tiers well. Uncomment only if you're switching
+# STT_PROVIDER back to "whisper" (e.g. for local dev without a GROQ_API_KEY):
+# openai-whisper
+
+# ---- Text-to-speech (config.TTS_PROVIDER: local | edge) ----
+# local: pyttsx3, offline, no API key, robotic voice
+pyttsx3
+# edge: free, unlimited, no API key, better voice quality
+edge-tts
+
+# ---- Durability layer (optional) ----
+# redis: only used if REDIS_URL is set in .env — mirrors session status
+# and JSON reports so they survive a restart. See config.py for details.
+redis==5.0.8
+
+# ============================================================
+# System-level (non-pip) dependencies — install separately:
+#   - ffmpeg     required by pydub (agents/meeting_agent.py audio
+#                conversion) and by local Whisper.
+#                Debian/Ubuntu: sudo apt-get install ffmpeg
+#                macOS:         brew install ffmpeg
+#   - espeak     required by pyttsx3's Linux backend only (macOS/
+#                Windows use their built-in speech engines instead).
+#                Debian/Ubuntu: sudo apt-get install espeak
+# ============================================================
