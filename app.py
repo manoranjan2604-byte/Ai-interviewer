@@ -3,6 +3,18 @@ app.py
 Flask application entrypoint: wires up config, CORS, rate limiting,
 routes, and static frontend serving.
 """
+# Must run before ANYTHING else is imported. Gunicorn's `-k gevent` worker
+# also monkey-patches, but only inside the forked worker process -- gunicorn's
+# master process imports this module first (to resolve `app:app`), and by
+# then `requests`/`urllib3` have already grabbed an unpatched reference to
+# ssl.SSLContext. That mismatch is what causes the
+# "RecursionError ... super(SSLContext, SSLContext).verify_mode.__set__"
+# crash the first time an outbound HTTPS request (e.g. to Meeting BaaS) is
+# made. Patching here, first, closes that window. See:
+# https://github.com/gevent/gevent/issues/903
+from gevent import monkey
+monkey.patch_all()
+
 import atexit
 
 from flask import Flask, render_template
