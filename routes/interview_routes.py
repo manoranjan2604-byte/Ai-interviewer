@@ -76,16 +76,29 @@ def end_interview():
     if not session:
         return jsonify({"error": "Session not found."}), 404
 
-    if session.status in ("completed", "failed", "ended"):
+    # session.status being terminal only means the *interview loop* has
+    # already stopped (or was told to) -- it says nothing about whether the
+    # *bot* actually finished leaving the call. Those used to be treated as
+    # the same thing here: if a webhook (or a previous failed attempt) had
+    # already set status to ended/failed/completed, this endpoint returned
+    # 409 and skipped bot removal entirely, even when bot_status still
+    # showed "joined" or "leave_failed" -- i.e. the bot was confirmed still
+    # in the meeting. Now we only block re-running the interview-stop logic
+    # (cancel_event/status update) on an already-terminal session, but still
+    # attempt bot removal below whenever the bot isn't already confirmed
+    # left, regardless of session.status.
+    already_ended = session.status in ("completed", "failed", "ended")
+    if already_ended and session.bot_status == "left":
         return jsonify({"error": f"Session already {session.status}."}), 409
 
-    # Signal the background interview loop to stop cooperatively. It checks
-    # this between steps (and while waiting for a spoken answer) and will
-    # break out, leave the meeting, and finish cleanup (report, email) on
-    # its own. This can take a little while if it's mid TTS/STT call, so
-    # we don't rely on it alone below.
-    session.cancel_event.set()
-    session_store.update(session_id, status="ended", end_time=now_iso())
+    if not already_ended:
+        # Signal the background interview loop to stop cooperatively. It
+        # checks this between steps (and while waiting for a spoken answer)
+        # and will break out, leave the meeting, and finish cleanup (report,
+        # email) on its own. This can take a little while if it's mid
+        # TTS/STT call, so we don't rely on it alone below.
+        session.cancel_event.set()
+        session_store.update(session_id, status="ended", end_time=now_iso())
 
     # Also remove the bot from the Google Meet call directly, right now,
     # instead of only waiting for the background thread to notice
