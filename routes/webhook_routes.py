@@ -33,12 +33,37 @@ def meetingbaas_webhook():
     # v1 events (kept for compatibility): bot.status_change, complete, failed
     if event == "bot.status_change":
         status = data.get("status") or payload.get("status")
+        # Meeting BaaS nests the actual status code under data.code for
+        # bot.status_change (e.g. {"code": "call_ended", "sub_code": "call_ended_by_host"}).
+        status = status or data.get("code")
         if status in ("in_call", "in_call_recording", "joined"):
             session_store.update(session_id, meeting_joined=True, bot_status="joined")
         elif status in ("waiting_room", "joining"):
             session_store.update(session_id, bot_status="joining")
-        elif status in ("failed", "ended", "left"):
-            session_store.update(session_id, bot_status=status)
+        elif status in ("failed", "ended", "left", "call_ended"):
+            session_store.update(session_id, bot_status="left" if status == "call_ended" else status)
+            # The call itself has ended on Meeting BaaS's side (most often
+            # because the candidate left/ended the Meet call) -- the bot is
+            # already gone from the call whether our interview loop knows it
+            # yet or not. Without this, the background orchestrator thread
+            # has no way to find out mid-loop and just keeps asking
+            # questions into an empty call until it happens to hit its
+            # question limit, so the graceful "leave after the interview is
+            # done" wrap-up (report generation, final leave() call) never
+            # runs promptly -- it only ever appears to happen "after the
+            # user leaves" because that's coincidentally when the loop
+            # finally gives up, long after the fact. Signalling cancel_event
+            # here makes the loop notice within its next check (it's
+            # polled throughout _conduct_interview) and immediately run
+            # wrap-up instead of waiting the interview out.
+            session = session_store.get(session_id)
+            if session and session.status in ("joining", "in_progress") and not session.cancel_event.is_set():
+                logger.info(
+                    "[%s] Meeting BaaS reports the call ended (status=%s); "
+                    "signalling the interview loop to wrap up now.", session_id, status,
+                )
+                session.cancel_event.set()
+                session_store.update(session_id, status="ended")
 
     elif event in ("failed", "bot.failed"):
         session_store.update(
