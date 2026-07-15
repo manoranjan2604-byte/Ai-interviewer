@@ -3,32 +3,16 @@ app.py
 Flask application entrypoint: wires up config, CORS, rate limiting,
 routes, and static frontend serving.
 """
-# Must run before ANYTHING else is imported. Gunicorn's `-k gevent` worker
-# also monkey-patches, but only inside the forked worker process -- gunicorn's
-# master process imports this module first (to resolve `app:app`), and by
-# then `requests`/`urllib3` have already grabbed an unpatched reference to
-# ssl.SSLContext. That mismatch is what causes the
-# "RecursionError ... super(SSLContext, SSLContext).verify_mode.__set__"
-# crash the first time an outbound HTTPS request (e.g. to Meeting BaaS) is
-# made. Patching here, first, closes that window. See:
-# https://github.com/gevent/gevent/issues/903
-#
-# thread=False is deliberate: this app runs real asyncio event loops on
-# real OS threads (the per-session interview thread in
-# routes/interview_routes.py, and the TTS ThreadPoolExecutor in
-# agents/tts_agent.py that runs asyncio.run() to call edge-tts). Patching
-# `thread` makes gevent's hub bookkeeping visible across those threads and
-# corrupts asyncio's "is a loop already running" tracking, causing
-# "asyncio.run() cannot be called from a running event loop" even though
-# the calls are on genuinely different threads. Leaving `thread` unpatched
-# keeps those as normal OS threads, where asyncio behaves normally; ssl/
-# socket/select stay patched, which is all gunicorn's gevent worker and the
-# outbound requests calls actually need. See:
-# https://github.com/gevent/gevent/issues/2026
-# https://github.com/gevent/gevent/issues/1812
-from gevent import monkey
-monkey.patch_all(thread=False)
-
+# No gevent monkey-patching here (see render.yaml: the start command now
+# uses `-k gthread`, not `-k gevent`). gevent's patching was the root cause
+# of two separate crashes -- an SSLContext RecursionError on outbound
+# requests calls, and "asyncio.run() cannot be called from a running event
+# loop" in tts_agent.py -- both stemming from gevent rewriting ssl/thread
+# state that this app's real OS threads + real asyncio event loops (the
+# background interview thread, the TTS/STT ThreadPoolExecutor) depend on
+# behaving normally. gthread's real per-connection threads give Flask-Sock
+# the same "one slow connection can't block the others" property without
+# any monkey-patching, so none of that is needed.
 import atexit
 
 from flask import Flask, render_template
