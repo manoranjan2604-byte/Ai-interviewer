@@ -3,6 +3,8 @@ app.py
 Flask application entrypoint: wires up config, CORS, rate limiting,
 routes, and static frontend serving.
 """
+import atexit
+
 from flask import Flask, render_template
 from flask_cors import CORS
 
@@ -14,6 +16,47 @@ from utils.logger import get_logger
 from utils.startup_validation import validate_startup
 
 logger = get_logger("app")
+
+
+def _cleanup_active_bots() -> None:
+    """
+    Runs on graceful process shutdown (e.g. gunicorn worker exiting because
+    Render is redeploying -- which happens on every env var change, not
+    just on a code push). Session state is in-memory only by default, so
+    without this, any bot that's mid-interview when the process restarts
+    is simply abandoned in the live Google Meet call: the background
+    thread that would eventually call leave() dies with the process, and
+    the new process that starts up afterward has no record the session
+    ever existed. This is what "audio_out: no channel registered for bot
+    <id>" repeating in the logs after a restart means.
+
+    This only covers a *graceful* shutdown (SIGTERM with time to run
+    cleanup, which is what gunicorn sends on a normal restart/redeploy) --
+    it can't help on a hard crash or SIGKILL, since nothing gets a chance
+    to run at all in that case. For full resilience against those too,
+    the real fix is a persistent (Redis-backed) session store plus a
+    periodic reconciliation job that checks Meeting BaaS for orphaned bots
+    -- worth doing if this keeps happening, but out of scope here.
+    """
+    # Local imports: session_store/remove_bot aren't needed until shutdown,
+    # and importing at module load time would risk a circular import with
+    # routes that import from app.
+    from api.meetingbaas_client import remove_bot
+    from interview.session import session_store
+
+    for session in session_store.all():
+        if session.bot_id and session.bot_status in ("joined", "joining"):
+            try:
+                logger.warning(
+                    "Shutdown: removing bot %s for session %s so it isn't left "
+                    "stranded in the call.", session.bot_id, session.session_id,
+                )
+                remove_bot(session.bot_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Shutdown cleanup failed to remove bot %s for session %s: %s",
+                    session.bot_id, session.session_id, exc,
+                )
 
 
 def create_app() -> Flask:
@@ -40,6 +83,8 @@ def create_app() -> Flask:
     app.register_blueprint(interview_bp)
     app.register_blueprint(webhook_bp)
     init_audio_ws(app)
+
+    atexit.register(_cleanup_active_bots)
 
     @app.route("/")
     def index():
