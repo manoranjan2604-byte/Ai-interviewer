@@ -163,28 +163,45 @@ def remove_bot(bot_id: str, retries: int = 2, confirm_timeout: float = 20.0) -> 
                 timeout=30,
             )
             if resp.status_code == 404:
-                # A 404 here only tells us Meeting BaaS's own bot record is
-                # gone -- it is NOT proof the underlying browser session has
-                # actually closed the tab and disconnected from the meet.
-                # Meeting BaaS exposes no other endpoint to check "is this
-                # browser instance still connected", so a 404 is the most
-                # confident signal the API can give us either way. Still,
-                # trusting it instantly and silently was hiding real
-                # mismatches (bot visibly still in the call) with no trace
-                # in the logs to diagnose them by. Give the browser a beat
-                # to actually finish tearing down, and log loudly either way
-                # so a recurrence is visible and reportable to Meeting BaaS
-                # support with a precise timestamp.
-                logger.warning(
-                    "Meeting BaaS bot %s: DELETE returned 404 (bot record already "
-                    "gone from Meeting BaaS's side). This does not by itself confirm "
-                    "the browser has left the call -- if it's still visibly in the "
-                    "meeting after this, that's a Meeting BaaS-side inconsistency "
-                    "worth reporting to their support with this bot_id and timestamp.",
-                    bot_id,
+                # Meeting BaaS's general Bots API docs describe removal as
+                # DELETE /bots/{bot_id} -- no /v2/ prefix -- while create_bot
+                # and get_bot_status both work fine under /v2/bots/... (the
+                # v2 prefix clearly IS live for those). It's possible the
+                # v2 prefix was just never wired up for delete specifically,
+                # which would produce exactly this symptom: an immediate,
+                # unconditional 404 even seconds after a status poll on the
+                # same bot_id confirmed it was live. Try the unprefixed path
+                # before concluding the bot record is actually gone.
+                fallback_resp = requests.delete(
+                    f"{config.MEETINGBAAS_BASE_URL}/bots/{bot_id}",
+                    headers=_headers(include_content_type=False),
+                    timeout=30,
                 )
-                time.sleep(3.0)
-                return True
+                if fallback_resp.status_code != 404:
+                    logger.info(
+                        "Meeting BaaS bot %s: /v2/bots/%s 404'd, but the unprefixed "
+                        "/bots/%s endpoint returned %s -- using that result instead.",
+                        bot_id, bot_id, bot_id, fallback_resp.status_code,
+                    )
+                    resp = fallback_resp
+                    if resp.status_code < 400:
+                        return _confirm_bot_left(bot_id, timeout=confirm_timeout)
+                    resp.raise_for_status()
+                else:
+                    # Both paths 404 -- this is as confident a "gone" signal
+                    # as the API can give us, but it's still not direct
+                    # proof the browser tab closed. Give it a beat and log
+                    # loudly so a recurrence is diagnosable.
+                    logger.warning(
+                        "Meeting BaaS bot %s: DELETE 404'd on both /v2/bots/%s and "
+                        "/bots/%s. This does not by itself confirm the browser has "
+                        "left the call -- if it's still visibly in the meeting after "
+                        "this, that's a Meeting BaaS-side inconsistency worth "
+                        "reporting to their support with this bot_id and timestamp.",
+                        bot_id, bot_id, bot_id,
+                    )
+                    time.sleep(3.0)
+                    return True
 
             resp.raise_for_status()
             logger.info(
