@@ -195,7 +195,11 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to end interview.");
-      toast("Interview ended.");
+      if (data.bot_removal_confirmed === false) {
+        toast("Interview ended, but the bot may still be in the call — check the Bot status field.", true);
+      } else {
+        toast("Interview ended.");
+      }
     } catch (err) {
       toast(err.message, true);
     } finally {
