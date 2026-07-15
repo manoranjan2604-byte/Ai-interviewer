@@ -291,9 +291,28 @@ class OrchestratorAgent:
     async def _wrap_up(self) -> None:
         sid = self.session.session_id
         logger.info(
-            "[%s] Interview loop finished; starting wrap-up (report generation, then "
-            "removing the bot from the call via Meeting BaaS).", sid,
+            "[%s] Interview loop finished; starting wrap-up (leaving the call via "
+            "Meeting BaaS first, then generating the report).", sid,
         )
+
+        # Leave the call first. Nothing below this point (report generation,
+        # emailing the report) needs the bot to still be in the meeting --
+        # it's all built from the qa_records already collected in memory --
+        # so there's no reason to keep the bot sitting in the call while an
+        # LLM call and an SMTP send run. Previously this ran after report
+        # generation + email, which is why the bot lingered in the meeting
+        # for however long those steps took after the interview was
+        # actually over.
+        bot_left = True
+        if self.meeting_agent:
+            try:
+                bot_left = await self.meeting_agent.leave()
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Error leaving meeting cleanly: %s", exc)
+                bot_left = False
+
+        session_store.update(sid, bot_status="left" if bot_left else "leave_failed")
+
         try:
             report_agent = ReportAgent(self.session)
             report_json, report_path = await report_agent.generate()
@@ -316,14 +335,6 @@ class OrchestratorAgent:
             logger.error("Report generation/email failed for session %s: %s", sid, exc)
             session_store.update(sid, error_message=f"Report generation failed: {exc}")
 
-        bot_left = True
-        if self.meeting_agent:
-            try:
-                bot_left = await self.meeting_agent.leave()
-            except Exception as exc:  # noqa: BLE001
-                logger.error("Error leaving meeting cleanly: %s", exc)
-                bot_left = False
-
         final_status = self.session.status
         if final_status not in ("failed", "ended"):
             final_status = "completed"
@@ -331,7 +342,6 @@ class OrchestratorAgent:
         session_store.update(
             sid,
             status=final_status,
-            bot_status="left" if bot_left else "leave_failed",
             end_time=now_iso(),
         )
         logger.info(
