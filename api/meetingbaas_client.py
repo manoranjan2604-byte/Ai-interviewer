@@ -58,6 +58,16 @@ def create_bot(
         "recording_mode": "audio_only",
         "transcription_enabled": True,
         "transcription_config": {"provider": "gladia"},
+        # Previously MEETINGBAAS_WAITING_ROOM_TIMEOUT was only used as our
+        # own local polling deadline in meeting_agent.join() -- it was never
+        # actually told to Meeting BaaS, so the bot itself had no
+        # automatic_leave configured and just sat on whatever platform
+        # default applies. Sending it here makes Meeting BaaS's own bot
+        # enforce the same timeout we're polling against, so it leaves the
+        # waiting room on its own even if our polling loop never gets to.
+        "automatic_leave": {
+            "waiting_room_timeout": config.MEETINGBAAS_WAITING_ROOM_TIMEOUT,
+        },
     }
     if entry_message:
         payload["entry_message"] = entry_message
@@ -153,9 +163,27 @@ def remove_bot(bot_id: str, retries: int = 2, confirm_timeout: float = 20.0) -> 
                 timeout=30,
             )
             if resp.status_code == 404:
-                # Already removed/ended — nothing left to do, this is a
-                # success from the caller's point of view.
-                logger.info("Meeting BaaS bot %s was already gone (404).", bot_id)
+                # A 404 here only tells us Meeting BaaS's own bot record is
+                # gone -- it is NOT proof the underlying browser session has
+                # actually closed the tab and disconnected from the meet.
+                # Meeting BaaS exposes no other endpoint to check "is this
+                # browser instance still connected", so a 404 is the most
+                # confident signal the API can give us either way. Still,
+                # trusting it instantly and silently was hiding real
+                # mismatches (bot visibly still in the call) with no trace
+                # in the logs to diagnose them by. Give the browser a beat
+                # to actually finish tearing down, and log loudly either way
+                # so a recurrence is visible and reportable to Meeting BaaS
+                # support with a precise timestamp.
+                logger.warning(
+                    "Meeting BaaS bot %s: DELETE returned 404 (bot record already "
+                    "gone from Meeting BaaS's side). This does not by itself confirm "
+                    "the browser has left the call -- if it's still visibly in the "
+                    "meeting after this, that's a Meeting BaaS-side inconsistency "
+                    "worth reporting to their support with this bot_id and timestamp.",
+                    bot_id,
+                )
+                time.sleep(3.0)
                 return True
 
             resp.raise_for_status()
