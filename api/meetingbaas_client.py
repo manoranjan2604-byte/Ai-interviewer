@@ -96,14 +96,53 @@ def create_bot(
         raise MeetingBaaSError(str(exc)) from exc
 
 
-def remove_bot(bot_id: str, retries: int = 2) -> bool:
+_TERMINAL_GONE_STATUSES = ("ended", "left", "call_ended", "completed", "failed", None)
+
+
+def _confirm_bot_left(bot_id: str, timeout: float = 20.0, poll_interval: float = 2.0) -> bool:
+    """Polls get_bot_status() until Meeting BaaS actually reports the bot as
+    out of the call, instead of trusting a 200 from DELETE at face value.
+
+    This mirrors join()'s reasoning exactly, just in reverse: join() learned
+    the hard way that a connected websocket isn't proof of admission because
+    joining is asynchronous on Meeting BaaS's side -- only a status poll
+    reporting in_call/joined is. Leaving is asynchronous the same way: the
+    DELETE just requests removal, and the bot can take a few seconds to
+    actually exit the call afterward. Treating the 200 itself as "gone" (the
+    previous behavior) is what let the caller mark bot_status="left" and move
+    on while the bot was, in reality, still sitting in the meeting.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            status_data = get_bot_status(bot_id)
+        except MeetingBaaSError:
+            # Status lookup itself failing (e.g. 404, bot record gone) is
+            # confirmation the bot is no longer a live participant.
+            logger.info("Meeting BaaS bot %s: status lookup failed while confirming departure; treating as gone.", bot_id)
+            return True
+        status = status_data.get("status") or status_data.get("data", {}).get("status")
+        if status in _TERMINAL_GONE_STATUSES:
+            logger.info("Meeting BaaS bot %s confirmed out of the call (status=%s).", bot_id, status)
+            return True
+        logger.debug("Meeting BaaS bot %s still shows status=%s; waiting for it to actually leave.", bot_id, status)
+        time.sleep(poll_interval)
+
+    logger.error(
+        "Meeting BaaS bot %s: removal was accepted but the bot still hadn't left the call "
+        "after %.0fs of polling — it may still be in the meeting.", bot_id, timeout,
+    )
+    return False
+
+
+def remove_bot(bot_id: str, retries: int = 2, confirm_timeout: float = 20.0) -> bool:
     """Removes/ends a bot's participation in its meeting.
 
-    Returns True if the bot is confirmed gone (the DELETE succeeded, or
-    Meeting BaaS reports it's already gone/ended — both mean "not in the
-    call anymore"), False otherwise. Callers should treat False as "the
-    bot may still be in the meeting" rather than assuming success, and
-    should not mark the bot as left in that case.
+    Returns True if the bot is confirmed gone (Meeting BaaS reports it's
+    already gone/ended, or a status poll after the DELETE confirms it
+    actually left within confirm_timeout), False otherwise. Callers should
+    treat False as "the bot may still be in the meeting" rather than
+    assuming success, and should not mark the bot as left in that case.
     """
     last_exc: Optional[Exception] = None
     for attempt in range(1, retries + 1):
@@ -120,8 +159,15 @@ def remove_bot(bot_id: str, retries: int = 2) -> bool:
                 return True
 
             resp.raise_for_status()
-            logger.info("Meeting BaaS bot %s removed.", bot_id)
-            return True
+            logger.info(
+                "Meeting BaaS bot %s removal request accepted; confirming it actually "
+                "leaves the call before reporting success...", bot_id,
+            )
+            # The DELETE being accepted only means Meeting BaaS *started*
+            # removing the bot, not that it's out of the call yet -- confirm
+            # via status poll the same way join() confirms admission, rather
+            # than returning True immediately.
+            return _confirm_bot_left(bot_id, timeout=confirm_timeout)
         except requests.RequestException as exc:
             last_exc = exc
             body = getattr(exc.response, "text", "") if getattr(exc, "response", None) is not None else ""
