@@ -12,8 +12,22 @@ routes, and static frontend serving.
 # crash the first time an outbound HTTPS request (e.g. to Meeting BaaS) is
 # made. Patching here, first, closes that window. See:
 # https://github.com/gevent/gevent/issues/903
+#
+# thread=False is deliberate: this app runs real asyncio event loops on
+# real OS threads (the per-session interview thread in
+# routes/interview_routes.py, and the TTS ThreadPoolExecutor in
+# agents/tts_agent.py that runs asyncio.run() to call edge-tts). Patching
+# `thread` makes gevent's hub bookkeeping visible across those threads and
+# corrupts asyncio's "is a loop already running" tracking, causing
+# "asyncio.run() cannot be called from a running event loop" even though
+# the calls are on genuinely different threads. Leaving `thread` unpatched
+# keeps those as normal OS threads, where asyncio behaves normally; ssl/
+# socket/select stay patched, which is all gunicorn's gevent worker and the
+# outbound requests calls actually need. See:
+# https://github.com/gevent/gevent/issues/2026
+# https://github.com/gevent/gevent/issues/1812
 from gevent import monkey
-monkey.patch_all()
+monkey.patch_all(thread=False)
 
 import atexit
 
