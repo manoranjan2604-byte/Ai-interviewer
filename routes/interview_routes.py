@@ -95,7 +95,15 @@ def end_interview():
     bot_removal_confirmed = True
     if session.bot_id:
         try:
-            removed = remove_bot(session.bot_id)
+            # Shorter confirm_timeout here than the default: this call runs
+            # synchronously in the request thread the "End interview" button
+            # is waiting on, so we don't want it hanging for the full
+            # confirmation window. If the bot hasn't confirmed departure
+            # within this shorter window, bot_removal_confirmed=False is
+            # returned to the frontend and the background interview loop's
+            # own leave() call (which uses the full timeout) still runs
+            # cleanup independently.
+            removed = remove_bot(session.bot_id, confirm_timeout=8)
             if removed:
                 session_store.update(session_id, bot_status="left")
                 logger.info("Session %s: bot %s removed from meeting immediately.", session_id, session.bot_id)
