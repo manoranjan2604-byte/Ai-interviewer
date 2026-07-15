@@ -127,8 +127,8 @@ class Config:
     # A session's question count is chosen at random within this range
     # (inclusive) rather than always hitting the same fixed number, so
     # interview length varies session to session.
-    MIN_QUESTIONS: int = int(os.getenv("MIN_QUESTIONS", "6"))
-    MAX_QUESTIONS: int = int(os.getenv("MAX_QUESTIONS", "12"))
+    MIN_QUESTIONS: int = int(os.getenv("MIN_QUESTIONS", "12"))
+    MAX_QUESTIONS: int = int(os.getenv("MAX_QUESTIONS", "30"))
     MAX_SESSIONS: int = int(os.getenv("MAX_SESSIONS", "20"))
     MAX_ANSWER_SECONDS: int = int(os.getenv("MAX_ANSWER_SECONDS", "120"))
 
