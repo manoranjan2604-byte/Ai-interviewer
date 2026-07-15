@@ -13,7 +13,6 @@
     statusValue: document.getElementById("statusValue"),
     botStatusValue: document.getElementById("botStatusValue"),
     timerValue: document.getElementById("timerValue"),
-    questionCountValue: document.getElementById("questionCountValue"),
     roleValue: document.getElementById("roleValue"),
     experienceValue: document.getElementById("experienceValue"),
     currentQuestion: document.getElementById("currentQuestion"),
@@ -153,7 +152,6 @@
 
       els.statusValue.textContent = formatLabel(data.status);
       els.botStatusValue.textContent = formatLabel(data.bot_status);
-      els.questionCountValue.textContent = `${data.question_number} / ${data.question_limit}`;
       els.roleValue.textContent = data.role || "Not yet determined";
       els.experienceValue.textContent = data.experience_level || "Not yet determined";
       if (data.current_question) els.currentQuestion.textContent = data.current_question;
