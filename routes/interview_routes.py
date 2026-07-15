@@ -92,6 +92,7 @@ def end_interview():
     # cancellation on its next check (which may be up to ~30-45s away if
     # it's mid TTS/STT call). This is what makes the bot actually leave
     # the meeting promptly when the user clicks "End interview".
+    bot_removal_confirmed = True
     if session.bot_id:
         try:
             removed = remove_bot(session.bot_id)
@@ -99,16 +100,33 @@ def end_interview():
                 session_store.update(session_id, bot_status="left")
                 logger.info("Session %s: bot %s removed from meeting immediately.", session_id, session.bot_id)
             else:
+                bot_removal_confirmed = False
+                session_store.update(session_id, bot_status="leave_failed")
                 logger.warning(
                     "Session %s: immediate bot removal for %s was not confirmed "
                     "(background cleanup will retry when the interview loop unwinds).",
                     session_id, session.bot_id,
                 )
         except Exception as exc:  # noqa: BLE001
+            bot_removal_confirmed = False
+            session_store.update(session_id, bot_status="leave_failed")
             logger.warning("Session %s: immediate bot removal failed (background cleanup will retry): %s", session_id, exc)
+    else:
+        # No bot_id on the session at all -- either the bot never
+        # actually joined, or it somehow never got persisted. Either way
+        # there's nothing here for remove_bot() to act on, and this is
+        # worth knowing about rather than silently doing nothing.
+        logger.warning(
+            "Session %s: /api/end called but the session has no bot_id on record; "
+            "nothing to remove via Meeting BaaS.", session_id,
+        )
 
     logger.info("Session %s end requested by user; signaled cancellation.", session_id)
-    return jsonify({"session_id": session_id, "status": "ended"}), 200
+    return jsonify({
+        "session_id": session_id,
+        "status": "ended",
+        "bot_removal_confirmed": bot_removal_confirmed,
+    }), 200
 
 
 @interview_bp.route("/report/<session_id>", methods=["GET"])
