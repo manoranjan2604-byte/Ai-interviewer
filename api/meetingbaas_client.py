@@ -252,6 +252,26 @@ def remove_bot(bot_id: str, retries: int = 2, confirm_timeout: float = 20.0) -> 
                 time.sleep(1.5 * attempt)
 
     logger.error("Meeting BaaS remove_bot exhausted retries for %s: %s", bot_id, last_exc)
+    # A 5xx/network failure on DELETE doesn't mean the bot is still in the
+    # call -- it just means we couldn't confirm removal that way. Before
+    # reporting failure, check the bot's actual status once, the same way
+    # the 4xx branch above does, rather than assuming worst-case.
+    try:
+        status_data = get_bot_status(bot_id)
+        status = status_data.get("status") or status_data.get("data", {}).get("status")
+        if status in _TERMINAL_GONE_STATUSES:
+            logger.info(
+                "Meeting BaaS bot %s is actually already out of the call (status=%s) "
+                "despite remove_bot's DELETE calls failing; treating as removed.",
+                bot_id, status,
+            )
+            return True
+        logger.error(
+            "Meeting BaaS bot %s still shows status=%s after remove_bot exhausted retries — "
+            "it may still be in the meeting.", bot_id, status,
+        )
+    except MeetingBaaSError:
+        pass
     return False
 
 
