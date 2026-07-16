@@ -120,6 +120,18 @@ class Config:
     # webhooks and stream audio back to this server.
     PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "")
 
+    # remove_bot() can fail if Meeting BaaS's DELETE endpoint is itself
+    # erroring (5xx) rather than the bot genuinely being stuck -- in that
+    # case neither the immediate /api/end call nor the background
+    # interview loop's own leave() call can do anything more than what's
+    # already baked into remove_bot()'s retries. BOT_CLEANUP_SWEEP_*
+    # configures a periodic sweep (see utils/bot_cleanup_sweeper.py) that
+    # keeps retrying removal for any session left in bot_status ==
+    # "leave_failed", so the bot still gets kicked out once Meeting BaaS's
+    # API recovers, without needing a new process restart or manual fix.
+    BOT_CLEANUP_SWEEP_INTERVAL_SECONDS: int = int(os.getenv("BOT_CLEANUP_SWEEP_INTERVAL_SECONDS", "30"))
+    BOT_CLEANUP_SWEEP_MAX_AGE_SECONDS: int = int(os.getenv("BOT_CLEANUP_SWEEP_MAX_AGE_SECONDS", "900"))
+
     # --- Interview behavior ---
     # No fixed duration: the interview runs until MAX_QUESTIONS is reached or the
     # candidate/interviewer naturally concludes it. MAX_QUESTIONS is a safety cap,
