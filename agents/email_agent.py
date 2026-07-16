@@ -1,13 +1,19 @@
 """
 agents/email_agent.py
 Email Agent: sends the interview report to the candidate once the
-interview and report generation are complete. Two providers:
+interview and report generation are complete. Three providers:
 
-  smtp  (default) - any standard SMTP server (Gmail SMTP, SES, a company
-        mail server). Needs SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD/EMAIL_FROM.
-  brevo - Brevo's transactional email REST API. Free tier: 300 emails/day,
-        no App Password setup, just BREVO_API_KEY. Better fit than SMTP
-        on platforms where outbound port 587 can be flaky.
+  smtp   - any standard SMTP server (Gmail SMTP, SES, a company mail
+        server). Needs SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD/EMAIL_FROM.
+        NOTE: does not work on Render's free tier -- Render blocks all
+        outbound traffic to SMTP ports 25/465/587 on free web services,
+        regardless of host/port/credentials. Use brevo or resend instead
+        if deployed there.
+  brevo  - Brevo's transactional email REST API. Free tier: 300 emails/day,
+        no App Password setup, just BREVO_API_KEY.
+  resend - Resend's transactional email REST API. Free tier: 3,000
+        emails/month (100/day), no credit card required, just
+        RESEND_API_KEY. Good default for Render free-tier deployments.
 
 Selected via config.EMAIL_PROVIDER. If the selected provider isn't
 configured, sending is skipped gracefully rather than crashing the
@@ -35,6 +41,8 @@ class EmailSendError(Exception):
 def is_configured() -> bool:
     if config.EMAIL_PROVIDER == "brevo":
         return bool(config.BREVO_API_KEY and config.EMAIL_FROM)
+    if config.EMAIL_PROVIDER == "resend":
+        return bool(config.RESEND_API_KEY and config.EMAIL_FROM)
     return bool(config.SMTP_HOST and config.SMTP_USERNAME and config.SMTP_PASSWORD and config.EMAIL_FROM)
 
 
@@ -53,11 +61,12 @@ def send_report_email(
     suitable for showing in the report/status API, not the raw exception.
     """
     if not is_configured():
-        reason = (
-            "Email not configured (BREVO_API_KEY/EMAIL_FROM missing)."
-            if config.EMAIL_PROVIDER == "brevo"
-            else "Email not configured (SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD/EMAIL_FROM missing)."
-        )
+        if config.EMAIL_PROVIDER == "brevo":
+            reason = "Email not configured (BREVO_API_KEY/EMAIL_FROM missing)."
+        elif config.EMAIL_PROVIDER == "resend":
+            reason = "Email not configured (RESEND_API_KEY/EMAIL_FROM missing)."
+        else:
+            reason = "Email not configured (SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD/EMAIL_FROM missing)."
         logger.warning("%s Skipping report email to %s.", reason, to_email)
         return False, reason
 
@@ -72,7 +81,43 @@ def send_report_email(
 
     if config.EMAIL_PROVIDER == "brevo":
         return _send_via_brevo(to_email, subject, body, pdf_path)
+    if config.EMAIL_PROVIDER == "resend":
+        return _send_via_resend(to_email, subject, body, pdf_path)
     return _send_via_smtp(to_email, subject, body, pdf_path)
+
+
+def _send_via_resend(
+    to_email: str, subject: str, body: str, pdf_path: Optional[str]
+) -> "tuple[bool, Optional[str]]":
+    payload = {
+        "from": f"{config.EMAIL_FROM_NAME} <{config.EMAIL_FROM}>",
+        "to": [to_email],
+        "subject": subject,
+        "text": body,
+    }
+    if pdf_path:
+        with open(pdf_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("ascii")
+        payload["attachments"] = [{"filename": "interview_report.pdf", "content": encoded}]
+
+    try:
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {config.RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=30,
+        )
+        if response.status_code in (200, 201):
+            logger.info("Report email sent to %s via Resend", to_email)
+            return True, None
+        logger.error("Resend send failed for %s: %s %s", to_email, response.status_code, response.text)
+        return False, f"Resend API returned {response.status_code}: {response.text[:200]}"
+    except requests.RequestException as exc:
+        logger.error("Failed to send report email to %s via Resend: %s", to_email, exc)
+        return False, f"Failed to reach Resend: {exc}"
 
 
 def _send_via_brevo(
