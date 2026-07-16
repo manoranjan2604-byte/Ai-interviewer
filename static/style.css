@@ -202,6 +202,9 @@ input:focus, select:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(
   padding:20px;
   animation:fadein .18s ease;
 }
+.install-overlay[hidden]{
+  display:none;
+}
 @keyframes fadein{ from{opacity:0;} to{opacity:1;} }
 
 .install-card{
