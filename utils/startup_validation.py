@@ -127,6 +127,15 @@ def _check_email(result: ValidationResult) -> None:
     if config.EMAIL_PROVIDER == "brevo":
         if not config.BREVO_API_KEY:
             result.warn("EMAIL_PROVIDER=brevo but BREVO_API_KEY is not set — report emails will not be sent.")
+    elif config.EMAIL_PROVIDER == "resend":
+        if not config.RESEND_API_KEY:
+            result.warn("EMAIL_PROVIDER=resend but RESEND_API_KEY is not set — report emails will not be sent.")
+    elif config.EMAIL_PROVIDER == "mailjet":
+        if not (config.MAILJET_API_KEY and config.MAILJET_API_SECRET):
+            result.warn("EMAIL_PROVIDER=mailjet but MAILJET_API_KEY/MAILJET_API_SECRET are not set — report emails will not be sent.")
+    elif config.EMAIL_PROVIDER == "emailjs":
+        if not (config.EMAILJS_SERVICE_ID and config.EMAILJS_TEMPLATE_ID and config.EMAILJS_PRIVATE_KEY):
+            result.warn("EMAIL_PROVIDER=emailjs but EMAILJS_SERVICE_ID/EMAILJS_TEMPLATE_ID/EMAILJS_PRIVATE_KEY are not set — report emails will not be sent.")
     else:
         smtp_fields = (config.SMTP_HOST, config.SMTP_USERNAME, config.SMTP_PASSWORD, config.EMAIL_FROM)
         if any(smtp_fields) and not all(smtp_fields):
