@@ -292,3 +292,99 @@
     showPanel("setup");
   });
 })();
+
+/* ============================================================
+   PWA: service worker registration + install / continue-in-
+   browser prompt
+   ============================================================ */
+(() => {
+  "use strict";
+
+  const DISMISS_KEY = "aperture_install_dismissed_at";
+  const DISMISS_DAYS = 14;
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch((err) => {
+        console.warn("Service worker registration failed:", err);
+      });
+    });
+  }
+
+  const overlay = document.getElementById("installOverlay");
+  if (!overlay) return; // markup not present on this page
+
+  const installBtn = document.getElementById("installBtn");
+  const continueBtn = document.getElementById("continueBrowserBtn");
+  const bodyText = document.getElementById("installBody");
+  const stepsList = document.getElementById("installSteps");
+
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true; // iOS Safari
+
+  const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+
+  function recentlyDismissed() {
+    const raw = localStorage.getItem(DISMISS_KEY);
+    if (!raw) return false;
+    const elapsedDays = (Date.now() - Number(raw)) / (1000 * 60 * 60 * 24);
+    return elapsedDays < DISMISS_DAYS;
+  }
+
+  function hideOverlay() {
+    overlay.hidden = true;
+  }
+
+  function dismissOverlay() {
+    localStorage.setItem(DISMISS_KEY, String(Date.now()));
+    hideOverlay();
+  }
+
+  function showOverlay() {
+    if (isStandalone || recentlyDismissed()) return;
+    overlay.hidden = false;
+  }
+
+  let deferredPrompt = null;
+
+  // Chrome / Edge / Android: native install prompt is available.
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredPrompt = event;
+    installBtn.hidden = false;
+    showOverlay();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredPrompt = null;
+    hideOverlay();
+  });
+
+  installBtn.addEventListener("click", async () => {
+    if (!deferredPrompt) {
+      hideOverlay();
+      return;
+    }
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    hideOverlay();
+  });
+
+  continueBtn.addEventListener("click", dismissOverlay);
+
+  if (isIos && !isStandalone) {
+    // iOS Safari has no beforeinstallprompt -- show manual "Add to
+    // Home Screen" steps instead, and hide the native-install button
+    // since there's nothing for it to trigger.
+    installBtn.hidden = true;
+    bodyText.textContent = "Add Aperture to your Home Screen for a faster, full-screen experience.";
+    stepsList.hidden = false;
+    stepsList.innerHTML =
+      "<li>Tap the Share icon in Safari's toolbar</li>" +
+      "<li>Scroll down and tap \u201cAdd to Home Screen\u201d</li>" +
+      "<li>Tap \u201cAdd\u201d to confirm</li>";
+    setTimeout(showOverlay, 1200);
+  }
+})();
