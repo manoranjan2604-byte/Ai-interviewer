@@ -192,3 +192,51 @@ input:focus, select:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(
   .report-columns{ grid-template-columns:1fr; }
   .panel{ padding:24px; }
 }
+
+/* ---------- install prompt ---------- */
+.install-overlay{
+  position:fixed; inset:0; z-index:100;
+  background:rgba(6,8,12,.72);
+  backdrop-filter:blur(6px);
+  display:flex; align-items:center; justify-content:center;
+  padding:20px;
+  animation:fadein .18s ease;
+}
+@keyframes fadein{ from{opacity:0;} to{opacity:1;} }
+
+.install-card{
+  width:100%; max-width:360px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:28px 26px;
+  text-align:center;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+  animation:cardup .22s ease;
+}
+@keyframes cardup{ from{opacity:0; transform:translateY(12px);} to{opacity:1; transform:translateY(0);} }
+
+.install-icon{
+  width:56px; height:56px; border-radius:14px;
+  margin:0 auto 16px; display:block;
+  box-shadow:0 6px 18px rgba(76,224,210,.25);
+}
+
+.install-card h2{
+  font-family:var(--font-display); font-size:1.1rem; margin:0 0 8px; color:var(--text);
+}
+.install-body{
+  font-size:.88rem; color:var(--text-muted); line-height:1.5; margin:0 0 20px;
+}
+.install-steps{
+  text-align:left; font-size:.84rem; color:var(--text-muted);
+  margin:0 0 20px; padding-left:20px; line-height:1.6;
+}
+.install-actions{
+  display:flex; flex-direction:column; gap:10px;
+}
+.install-actions .btn{ width:100%; }
+
+@media (max-width:420px){
+  .install-card{ padding:24px 20px; }
+}
