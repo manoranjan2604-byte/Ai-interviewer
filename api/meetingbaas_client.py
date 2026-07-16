@@ -245,8 +245,8 @@ def remove_bot(bot_id: str, retries: int = 2, confirm_timeout: float = 20.0) -> 
                 return False
 
             logger.warning(
-                "Meeting BaaS remove_bot failed for %s (attempt %d/%d): %s",
-                bot_id, attempt, retries, exc,
+                "Meeting BaaS remove_bot failed for %s (attempt %d/%d): %s | response body: %s",
+                bot_id, attempt, retries, exc, body or "<empty>",
             )
             if attempt < retries:
                 time.sleep(1.5 * attempt)
