@@ -40,7 +40,7 @@ class InterviewSession:
     role: Optional[str] = None
     experience_level: Optional[str] = None
     status: str = "initializing"  # initializing|joining|in_progress|completed|failed|ended
-    bot_status: str = "not_started"  # not_started|joining|joined|failed|left|leave_failed
+    bot_status: str = "not_started"  # not_started|joining|joined|failed|left|leave_failed|leave_abandoned
     meeting_joined: bool = False
     # Meeting BaaS bot id, set once the bot successfully joins. Lets
     # /api/end remove the bot from the call immediately, rather than only
