@@ -149,7 +149,7 @@ class Config:
     # brevo = Brevo's transactional email REST API (https://www.brevo.com) —
     #         free tier is 300 emails/day, no SMTP App Password fiddling,
     #         just one API key.
-    EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "smtp")  # smtp | brevo | resend | mailjet
+    EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "smtp")  # smtp | brevo | resend | mailjet | emailjs
     BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
     # Resend: genuinely free tier (3,000 emails/month, 100/day, no credit
     # card required) sent over a plain HTTPS API call -- unlike SMTP, this
@@ -165,6 +165,21 @@ class Config:
     # a domain -- a better fit than Resend when you don't have a domain.
     MAILJET_API_KEY: str = os.getenv("MAILJET_API_KEY", "")
     MAILJET_API_SECRET: str = os.getenv("MAILJET_API_SECRET", "")
+    # EmailJS: sends through your own Gmail account via OAuth (no SMTP App
+    # Password, no domain, no sender verification) -- a plain HTTPS API
+    # call, so it isn't affected by Render's SMTP port block either. Free
+    # tier is 200 emails/month, which is the trade-off for not needing a
+    # domain. PRIVATE_KEY is required for server-side (non-browser) calls
+    # -- use it, not the public key, or requests are rejected. ATTACHMENT_
+    # PARAM is optional: only set it if your EmailJS template has an
+    # attachment-type variable, and set it to that variable's name -- the
+    # PDF is sent as a base64 data URL under that key. Leave blank to send
+    # text-only (still works fine, just no PDF attached).
+    EMAILJS_SERVICE_ID: str = os.getenv("EMAILJS_SERVICE_ID", "")
+    EMAILJS_TEMPLATE_ID: str = os.getenv("EMAILJS_TEMPLATE_ID", "")
+    EMAILJS_PUBLIC_KEY: str = os.getenv("EMAILJS_PUBLIC_KEY", "")
+    EMAILJS_PRIVATE_KEY: str = os.getenv("EMAILJS_PRIVATE_KEY", "")
+    EMAILJS_ATTACHMENT_PARAM: str = os.getenv("EMAILJS_ATTACHMENT_PARAM", "")
     SMTP_HOST: str = os.getenv("SMTP_HOST", "")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
