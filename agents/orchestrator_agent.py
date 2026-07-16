@@ -186,6 +186,10 @@ class OrchestratorAgent:
 
         question_count = 0
         running_score_total = 0.0
+        logger.info(
+            "[%s] Starting question loop: question_limit=%d (role=%s, level=%s)",
+            sid, self.session.question_limit, profile["role"], profile["experience_level"],
+        )
 
         while question_count < self.session.question_limit and not cancelled():
             running_avg = running_score_total / question_count if question_count else 5.0
@@ -202,7 +206,12 @@ class OrchestratorAgent:
             )
 
             if result["plan"].should_conclude:
-                logger.info("[%s] Reasoning Agent concluded early: %s", sid, result["plan"].conclude_reason)
+                logger.info(
+                    "[%s] Reasoning Agent concluded early at Q%d/%d: %s | recent scores: %s",
+                    sid, question_count, self.session.question_limit,
+                    result["plan"].conclude_reason,
+                    [r.score for r in self.session.qa_records[-4:]],
+                )
                 break
 
             record = QARecord(question=result["question"], category=result["category"])
@@ -232,7 +241,12 @@ class OrchestratorAgent:
             session_store.update(sid, current_score=running_score_total / question_count)
 
             if evaluation.get("feedback"):
-                logger.info("[%s] Q%d scored %.1f/10", sid, question_count, evaluation["score"])
+                preview = (transcript or "")[:120].replace("\n", " ")
+                logger.info(
+                    "[%s] Q%d scored %.1f/10 | transcript(%d chars): %r%s",
+                    sid, question_count, evaluation["score"], len(transcript or ""),
+                    preview, "..." if transcript and len(transcript) > 120 else "",
+                )
 
         if not cancelled():
             closing = (
