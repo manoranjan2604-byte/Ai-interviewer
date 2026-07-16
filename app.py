@@ -55,7 +55,15 @@ def _cleanup_active_bots() -> None:
     from interview.session import session_store
 
     for session in session_store.all():
-        if session.bot_id and session.bot_status in ("joined", "joining"):
+        # Includes "leave_failed" as well as "joined"/"joining": a session
+        # can reach leave_failed if remove_bot() already failed once (e.g.
+        # Meeting BaaS's DELETE endpoint 500ing) before this shutdown --
+        # that bot is still live and this is the last chance this process
+        # gets to retry before session_store (in-memory only, not restored
+        # from Redis on boot) is gone and the new process has no record of
+        # it at all. Missing this case here is exactly how a bot stuck in
+        # leave_failed at redeploy time became permanently unrecoverable.
+        if session.bot_id and session.bot_status in ("joined", "joining", "leave_failed"):
             try:
                 logger.warning(
                     "Shutdown: removing bot %s for session %s so it isn't left "
