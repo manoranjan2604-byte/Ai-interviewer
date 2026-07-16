@@ -302,6 +302,7 @@
 
   const DISMISS_KEY = "aperture_install_dismissed_at";
   const DISMISS_DAYS = 14;
+  const INSTALLED_KEY = "aperture_installed";
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
@@ -325,6 +326,22 @@
 
   const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 
+  // If we're running standalone right now, the app is obviously
+  // installed -- persist that so a later visit in a plain browser tab
+  // (where display-mode can't tell us anything) still knows not to ask.
+  if (isStandalone) {
+    localStorage.setItem(INSTALLED_KEY, "1");
+  }
+
+  function isInstalled() {
+    return localStorage.getItem(INSTALLED_KEY) === "1";
+  }
+
+  function markInstalled() {
+    localStorage.setItem(INSTALLED_KEY, "1");
+    hideOverlay();
+  }
+
   function recentlyDismissed() {
     const raw = localStorage.getItem(DISMISS_KEY);
     if (!raw) return false;
@@ -342,7 +359,7 @@
   }
 
   function showOverlay() {
-    if (isStandalone || recentlyDismissed()) return;
+    if (isStandalone || isInstalled() || recentlyDismissed()) return;
     overlay.hidden = false;
   }
 
@@ -351,14 +368,17 @@
   // Chrome / Edge / Android: native install prompt is available.
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
+    if (isInstalled()) return; // already installed -- never re-prompt
     deferredPrompt = event;
     installBtn.hidden = false;
     showOverlay();
   });
 
+  // Fires once the browser finishes installing the app -- the most
+  // reliable signal we get, so persist it immediately.
   window.addEventListener("appinstalled", () => {
     deferredPrompt = null;
-    hideOverlay();
+    markInstalled();
   });
 
   installBtn.addEventListener("click", async () => {
@@ -367,9 +387,16 @@
       return;
     }
     deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
+    const { outcome } = await deferredPrompt.userChoice;
     deferredPrompt = null;
-    hideOverlay();
+    // Belt-and-braces: some browsers are slow to fire (or never fire)
+    // `appinstalled` after an accepted prompt, so also mark installed
+    // here rather than relying on that event alone.
+    if (outcome === "accepted") {
+      markInstalled();
+    } else {
+      hideOverlay();
+    }
   });
 
   continueBtn.addEventListener("click", dismissOverlay);
@@ -385,6 +412,8 @@
       "<li>Tap the Share icon in Safari's toolbar</li>" +
       "<li>Scroll down and tap \u201cAdd to Home Screen\u201d</li>" +
       "<li>Tap \u201cAdd\u201d to confirm</li>";
-    setTimeout(showOverlay, 1200);
+    if (!isInstalled()) {
+      setTimeout(showOverlay, 1200);
+    }
   }
 })();
