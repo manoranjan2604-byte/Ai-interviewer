@@ -1,7 +1,7 @@
 """
 routes/webhook_routes.py
-Receives Meeting BaaS webhook events (bot.status_change, complete, failed)
-and updates the matching interview session accordingly.
+Receives Meeting BaaS v2 webhook events (bot.status_change, bot.completed,
+bot.failed) and updates the matching interview session accordingly.
 """
 from flask import Blueprint, jsonify, request
 
@@ -29,8 +29,9 @@ def meetingbaas_webhook():
     if not session_id:
         return jsonify({"status": "ignored", "reason": "unknown bot_id"}), 200
 
-    # v2 events: bot.status_change (live), bot.completed, bot.failed
-    # v1 events (kept for compatibility): bot.status_change, complete, failed
+    # v2 events only: bot.status_change (live), bot.completed, bot.failed.
+    # (v1's unprefixed "complete"/"failed" event names are intentionally
+    # NOT handled here -- this app is v2-only.)
     if event == "bot.status_change":
         status = data.get("status") or payload.get("status")
         # Meeting BaaS nests the actual status code under data.code for
@@ -65,15 +66,15 @@ def meetingbaas_webhook():
                 session.cancel_event.set()
                 session_store.update(session_id, status="ended")
 
-    elif event in ("failed", "bot.failed"):
+    elif event == "bot.failed":
         session_store.update(
             session_id,
             status="failed",
             bot_status="failed",
-            error_message=data.get("error") or payload.get("error", "Meeting BaaS bot failed to join."),
+            error_message=data.get("error") or data.get("message") or payload.get("error", "Meeting BaaS bot failed to join."),
         )
 
-    elif event in ("complete", "bot.completed"):
+    elif event == "bot.completed":
         session_store.update(session_id, bot_status="left")
 
     return jsonify({"status": "ok"}), 200
