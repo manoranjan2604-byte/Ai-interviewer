@@ -1,19 +1,26 @@
 """
 agents/email_agent.py
 Email Agent: sends the interview report to the candidate once the
-interview and report generation are complete. Three providers:
+interview and report generation are complete. Four providers:
 
-  smtp   - any standard SMTP server (Gmail SMTP, SES, a company mail
+  smtp    - any standard SMTP server (Gmail SMTP, SES, a company mail
         server). Needs SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD/EMAIL_FROM.
         NOTE: does not work on Render's free tier -- Render blocks all
         outbound traffic to SMTP ports 25/465/587 on free web services,
-        regardless of host/port/credentials. Use brevo or resend instead
-        if deployed there.
-  brevo  - Brevo's transactional email REST API. Free tier: 300 emails/day,
-        no App Password setup, just BREVO_API_KEY.
-  resend - Resend's transactional email REST API. Free tier: 3,000
+        regardless of host/port/credentials. Use brevo/resend/mailjet
+        instead if deployed there.
+  brevo   - Brevo's transactional email REST API. Free tier: 300 emails/
+        day, no domain required (just verify your sender email), no
+        credit card. Just BREVO_API_KEY.
+  resend  - Resend's transactional email REST API. Free tier: 3,000
         emails/month (100/day), no credit card required, just
-        RESEND_API_KEY. Good default for Render free-tier deployments.
+        RESEND_API_KEY. CAVEAT: without a verified domain, the sandbox
+        sender (onboarding@resend.dev) can only send to the Resend
+        account's own registered email, not arbitrary recipients.
+  mailjet - Mailjet's transactional email REST API. Free tier: 6,000
+        emails/month (200/day), no domain required (signup email is
+        auto-validated as a sender), no credit card. Needs
+        MAILJET_API_KEY and MAILJET_API_SECRET.
 
 Selected via config.EMAIL_PROVIDER. If the selected provider isn't
 configured, sending is skipped gracefully rather than crashing the
@@ -43,6 +50,8 @@ def is_configured() -> bool:
         return bool(config.BREVO_API_KEY and config.EMAIL_FROM)
     if config.EMAIL_PROVIDER == "resend":
         return bool(config.RESEND_API_KEY and config.EMAIL_FROM)
+    if config.EMAIL_PROVIDER == "mailjet":
+        return bool(config.MAILJET_API_KEY and config.MAILJET_API_SECRET and config.EMAIL_FROM)
     return bool(config.SMTP_HOST and config.SMTP_USERNAME and config.SMTP_PASSWORD and config.EMAIL_FROM)
 
 
@@ -65,6 +74,8 @@ def send_report_email(
             reason = "Email not configured (BREVO_API_KEY/EMAIL_FROM missing)."
         elif config.EMAIL_PROVIDER == "resend":
             reason = "Email not configured (RESEND_API_KEY/EMAIL_FROM missing)."
+        elif config.EMAIL_PROVIDER == "mailjet":
+            reason = "Email not configured (MAILJET_API_KEY/MAILJET_API_SECRET/EMAIL_FROM missing)."
         else:
             reason = "Email not configured (SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD/EMAIL_FROM missing)."
         logger.warning("%s Skipping report email to %s.", reason, to_email)
@@ -83,7 +94,44 @@ def send_report_email(
         return _send_via_brevo(to_email, subject, body, pdf_path)
     if config.EMAIL_PROVIDER == "resend":
         return _send_via_resend(to_email, subject, body, pdf_path)
+    if config.EMAIL_PROVIDER == "mailjet":
+        return _send_via_mailjet(to_email, subject, body, pdf_path)
     return _send_via_smtp(to_email, subject, body, pdf_path)
+
+
+def _send_via_mailjet(
+    to_email: str, subject: str, body: str, pdf_path: Optional[str]
+) -> "tuple[bool, Optional[str]]":
+    message = {
+        "From": {"Email": config.EMAIL_FROM, "Name": config.EMAIL_FROM_NAME},
+        "To": [{"Email": to_email}],
+        "Subject": subject,
+        "TextPart": body,
+    }
+    if pdf_path:
+        with open(pdf_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("ascii")
+        message["Attachments"] = [{
+            "ContentType": "application/pdf",
+            "Filename": "interview_report.pdf",
+            "Base64Content": encoded,
+        }]
+
+    try:
+        response = requests.post(
+            "https://api.mailjet.com/v3.1/send",
+            auth=(config.MAILJET_API_KEY, config.MAILJET_API_SECRET),
+            json={"Messages": [message]},
+            timeout=30,
+        )
+        if response.status_code in (200, 201):
+            logger.info("Report email sent to %s via Mailjet", to_email)
+            return True, None
+        logger.error("Mailjet send failed for %s: %s %s", to_email, response.status_code, response.text)
+        return False, f"Mailjet API returned {response.status_code}: {response.text[:200]}"
+    except requests.RequestException as exc:
+        logger.error("Failed to send report email to %s via Mailjet: %s", to_email, exc)
+        return False, f"Failed to reach Mailjet: {exc}"
 
 
 def _send_via_resend(
