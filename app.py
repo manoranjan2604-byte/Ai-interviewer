@@ -96,6 +96,10 @@ def create_app() -> Flask:
 
     atexit.register(_cleanup_active_bots)
 
+    from utils import bot_cleanup_sweeper
+    bot_cleanup_sweeper.start()
+    atexit.register(bot_cleanup_sweeper.stop)
+
     @app.route("/")
     def index():
         return render_template("index.html")
