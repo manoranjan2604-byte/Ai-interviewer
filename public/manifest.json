@@ -1,0 +1,55 @@
+{
+  "id": "/",
+  "name": "Aperture — AI Interview Console",
+  "short_name": "Aperture",
+  "description": "AI-run interviews over Google Meet — Aperture joins the call, asks role-specific questions, and emails you a scored report when it's done.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0A0D12",
+  "theme_color": "#0A0D12",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["productivity", "business", "education"],
+  "icons": [
+    {
+      "src": "/public/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/public/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/public/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/public/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Start a new interview",
+      "short_name": "New interview",
+      "description": "Jump straight to the setup form",
+      "url": "/?page=setup",
+      "icons": [
+        {
+          "src": "/public/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
