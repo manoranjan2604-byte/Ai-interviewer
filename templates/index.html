@@ -4,12 +4,38 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Aperture &mdash; AI Interview Console</title>
+<meta name="description" content="AI-run interviews over Google Meet &mdash; Aperture joins the call, asks role-specific questions, and emails you a scored report when it's done." />
+
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0A0D12" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Aperture" />
+<link rel="icon" href="/public/icon-192.png" />
+<link rel="apple-touch-icon" href="/public/icon-192.png" />
+
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
 <div class="scanline"></div>
+
+<!-- ============ INSTALL PROMPT ============ -->
+<div id="installOverlay" class="install-overlay" hidden>
+  <div class="install-card" role="dialog" aria-modal="true" aria-labelledby="installTitle">
+    <img class="install-icon" src="/public/icon-192.png" alt="" width="56" height="56" />
+    <h2 id="installTitle">Get the Aperture app</h2>
+    <p id="installBody" class="install-body">Install Aperture for a faster, full-screen experience &mdash; or keep using it right here in your browser.</p>
+    <ol id="installSteps" class="install-steps" hidden></ol>
+    <div class="install-actions">
+      <button type="button" id="installBtn" class="btn btn-primary" hidden>Install app</button>
+      <button type="button" id="continueBrowserBtn" class="btn btn-ghost">Continue in browser</button>
+    </div>
+  </div>
+</div>
 
 <header class="topbar">
   <div class="brand">
