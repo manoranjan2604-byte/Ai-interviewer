@@ -21,6 +21,14 @@ interview and report generation are complete. Four providers:
         emails/month (200/day), no domain required (signup email is
         auto-validated as a sender), no credit card. Needs
         MAILJET_API_KEY and MAILJET_API_SECRET.
+  emailjs - EmailJS's REST API, sending through the user's own Gmail
+        account via OAuth. No domain, no sender verification, no SMTP
+        App Password. Free tier: 200 emails/month (the trade-off for
+        skipping domain setup entirely). Needs EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID, EMAILJS_PRIVATE_KEY. PDF attachment only
+        goes out if EMAILJS_ATTACHMENT_PARAM is set to match an
+        attachment-type variable configured on the EmailJS template;
+        otherwise the email still sends, just without the PDF.
 
 Selected via config.EMAIL_PROVIDER. If the selected provider isn't
 configured, sending is skipped gracefully rather than crashing the
@@ -52,6 +60,13 @@ def is_configured() -> bool:
         return bool(config.RESEND_API_KEY and config.EMAIL_FROM)
     if config.EMAIL_PROVIDER == "mailjet":
         return bool(config.MAILJET_API_KEY and config.MAILJET_API_SECRET and config.EMAIL_FROM)
+    if config.EMAIL_PROVIDER == "emailjs":
+        return bool(
+            config.EMAILJS_SERVICE_ID
+            and config.EMAILJS_TEMPLATE_ID
+            and config.EMAILJS_PRIVATE_KEY
+            and config.EMAIL_FROM
+        )
     return bool(config.SMTP_HOST and config.SMTP_USERNAME and config.SMTP_PASSWORD and config.EMAIL_FROM)
 
 
@@ -76,6 +91,8 @@ def send_report_email(
             reason = "Email not configured (RESEND_API_KEY/EMAIL_FROM missing)."
         elif config.EMAIL_PROVIDER == "mailjet":
             reason = "Email not configured (MAILJET_API_KEY/MAILJET_API_SECRET/EMAIL_FROM missing)."
+        elif config.EMAIL_PROVIDER == "emailjs":
+            reason = "Email not configured (EMAILJS_SERVICE_ID/EMAILJS_TEMPLATE_ID/EMAILJS_PRIVATE_KEY/EMAIL_FROM missing)."
         else:
             reason = "Email not configured (SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD/EMAIL_FROM missing)."
         logger.warning("%s Skipping report email to %s.", reason, to_email)
@@ -96,6 +113,8 @@ def send_report_email(
         return _send_via_resend(to_email, subject, body, pdf_path)
     if config.EMAIL_PROVIDER == "mailjet":
         return _send_via_mailjet(to_email, subject, body, pdf_path)
+    if config.EMAIL_PROVIDER == "emailjs":
+        return _send_via_emailjs(to_email, candidate_name, subject, body, pdf_path)
     return _send_via_smtp(to_email, subject, body, pdf_path)
 
 
@@ -201,6 +220,54 @@ def _send_via_brevo(
     except requests.RequestException as exc:
         logger.error("Failed to send report email to %s via Brevo: %s", to_email, exc)
         return False, f"Failed to reach Brevo: {exc}"
+
+
+def _send_via_emailjs(
+    to_email: str, candidate_name: str, subject: str, body: str, pdf_path: Optional[str]
+) -> "tuple[bool, Optional[str]]":
+    template_params = {
+        "to_email": to_email,
+        "to_name": candidate_name,
+        "from_name": config.EMAIL_FROM_NAME,
+        "reply_to": config.EMAIL_FROM,
+        "subject": subject,
+        "message": body,
+    }
+    if pdf_path and config.EMAILJS_ATTACHMENT_PARAM:
+        with open(pdf_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("ascii")
+        template_params[config.EMAILJS_ATTACHMENT_PARAM] = (
+            f"data:application/pdf;base64,{encoded}"
+        )
+    elif pdf_path:
+        logger.warning(
+            "EMAILJS_ATTACHMENT_PARAM not set — sending report to %s without the PDF attached.",
+            to_email,
+        )
+
+    payload = {
+        "service_id": config.EMAILJS_SERVICE_ID,
+        "template_id": config.EMAILJS_TEMPLATE_ID,
+        "user_id": config.EMAILJS_PUBLIC_KEY,
+        "accessToken": config.EMAILJS_PRIVATE_KEY,
+        "template_params": template_params,
+    }
+
+    try:
+        response = requests.post(
+            "https://api.emailjs.com/api/v1.0/email/send",
+            headers={"Content-Type": "application/json"},
+            json=payload,
+            timeout=30,
+        )
+        if response.status_code == 200:
+            logger.info("Report email sent to %s via EmailJS", to_email)
+            return True, None
+        logger.error("EmailJS send failed for %s: %s %s", to_email, response.status_code, response.text)
+        return False, f"EmailJS API returned {response.status_code}: {response.text[:200]}"
+    except requests.RequestException as exc:
+        logger.error("Failed to send report email to %s via EmailJS: %s", to_email, exc)
+        return False, f"Failed to reach EmailJS: {exc}"
 
 
 def _send_via_smtp(
