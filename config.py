@@ -149,8 +149,14 @@ class Config:
     # brevo = Brevo's transactional email REST API (https://www.brevo.com) —
     #         free tier is 300 emails/day, no SMTP App Password fiddling,
     #         just one API key.
-    EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "smtp")  # smtp | brevo
+    EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "smtp")  # smtp | brevo | resend
     BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
+    # Resend: genuinely free tier (3,000 emails/month, 100/day, no credit
+    # card required) sent over a plain HTTPS API call -- unlike SMTP, this
+    # isn't affected by Render's free-tier block on outbound SMTP ports
+    # 25/465/587. Good default for Render free-tier deployments where SMTP
+    # will never work regardless of host/port/credentials.
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
     SMTP_HOST: str = os.getenv("SMTP_HOST", "")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
