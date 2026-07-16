@@ -149,14 +149,22 @@ class Config:
     # brevo = Brevo's transactional email REST API (https://www.brevo.com) —
     #         free tier is 300 emails/day, no SMTP App Password fiddling,
     #         just one API key.
-    EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "smtp")  # smtp | brevo | resend
+    EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "smtp")  # smtp | brevo | resend | mailjet
     BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
     # Resend: genuinely free tier (3,000 emails/month, 100/day, no credit
     # card required) sent over a plain HTTPS API call -- unlike SMTP, this
     # isn't affected by Render's free-tier block on outbound SMTP ports
-    # 25/465/587. Good default for Render free-tier deployments where SMTP
-    # will never work regardless of host/port/credentials.
+    # 25/465/587. NOTE: without a verified domain, Resend's sandbox sender
+    # (onboarding@resend.dev) can only deliver to the Resend account's own
+    # registered email -- not arbitrary recipients. Fine for testing,
+    # not for sending real candidate reports without owning a domain.
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
+    # Mailjet: free tier (6,000/month, 200/day), no credit card required.
+    # Unlike Resend's sandbox, Mailjet auto-validates your signup email as
+    # a sender and lets you send to any recipient without owning/verifying
+    # a domain -- a better fit than Resend when you don't have a domain.
+    MAILJET_API_KEY: str = os.getenv("MAILJET_API_KEY", "")
+    MAILJET_API_SECRET: str = os.getenv("MAILJET_API_SECRET", "")
     SMTP_HOST: str = os.getenv("SMTP_HOST", "")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
