@@ -14,8 +14,9 @@ routes, and static frontend serving.
 # the same "one slow connection can't block the others" property without
 # any monkey-patching, so none of that is needed.
 import atexit
+import os
 
-from flask import Flask, render_template
+from flask import Flask, render_template, send_from_directory
 from flask_cors import CORS
 
 from config import config
@@ -87,6 +88,12 @@ def create_app() -> Flask:
     app = Flask(__name__, static_folder="static", template_folder="templates")
     app.config["SECRET_KEY"] = config.SECRET_KEY
 
+    # PWA assets (icons, manifest, sw.js, offline.html) live in their own
+    # public/ folder, flat -- not nested under static/. Flask only wires
+    # up one automatic static folder (static_folder above, mapped to
+    # /static/<path>), so this second folder gets its own explicit route.
+    public_dir = os.path.join(app.root_path, "public")
+
     CORS(app, resources={r"/api/*": {"origins": config.CORS_ORIGINS}})
 
     try:
@@ -115,6 +122,32 @@ def create_app() -> Flask:
     @app.route("/health")
     def health():
         return {"status": "ok"}
+
+    # Served from the root path (not /static/...) on purpose: a service
+    # worker's default scope is the directory it's served from, so
+    # registering it from /static/sw.js would only ever let it control
+    # requests under /static/. Serving it as /sw.js gives it scope over
+    # the whole app.
+    @app.route("/sw.js")
+    def service_worker():
+        response = send_from_directory(public_dir, "sw.js")
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["Service-Worker-Allowed"] = "/"
+        return response
+
+    @app.route("/manifest.json")
+    def manifest():
+        return send_from_directory(public_dir, "manifest.json")
+
+    @app.route("/offline.html")
+    def offline():
+        return send_from_directory(public_dir, "offline.html")
+
+    # Icons (and anything else dropped in public/) are served from
+    # /public/<filename>, e.g. /public/icon-192.png.
+    @app.route("/public/<path:filename>")
+    def public_assets(filename):
+        return send_from_directory(public_dir, filename)
 
     return app
 
